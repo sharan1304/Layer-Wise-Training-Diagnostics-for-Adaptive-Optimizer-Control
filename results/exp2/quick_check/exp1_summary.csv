@@ -1,3 +1,0 @@
-config,optimizer,ghd_mode,n_seeds,s70_mean,s70_std,s70_reached,s80_mean,s80_std,s80_reached,s90_mean,s90_std,s90_reached,auc_mean,auc_std,final_val_mean,final_val_std,test_mean,test_std,interventions_mean,interventions_std,elapsed_mean,elapsed_std
-SGD,sgd,none,1,320.0,0.0,1,380.0,0.0,1,510.0,0.0,1,67.86245,0.0,95.11,0.0,95.47,0.0,0.0,0.0,4.092191219329834,0.0
-SGD + GHD-Rules,sgd,rules,1,250.0,0.0,1,280.0,0.0,1,430.0,0.0,1,74.51559999999999,0.0,95.46,0.0,95.89,0.0,1252.0,0.0,4.517212867736816,0.0
