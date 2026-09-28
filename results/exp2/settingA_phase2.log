@@ -1,0 +1,32 @@
+Experiment 2: mlp/mnist, 7 layers, gain 1.5, eval every 10 steps -> results/exp2/mlp_mnist_l7_g1.5_*.json
+Learning rates: sgd=0.1, adamw=0.001, lars=1, lngd=0.1 | steps: 5000
+=== Phase 2: GHD-AI ===
+Running 12 run(s) x 5000 steps with 4 worker(s)...
+[done] SGD + GHD-AI           seed 42   lr 0.1    70%@240  80%@290  90%@470  test 97.47%  (50s)
+[done] SGD + GHD-AI           seed 7    lr 0.1    70%@280  80%@330  90%@510  test 96.07%  (50s)
+[done] SGD + GHD-AI           seed 123  lr 0.1    70%@260  80%@280  90%@480  test 97.31%  (50s)
+[done] AdamW + GHD-AI         seed 42   lr 0.001  70%@100  80%@110  90%@230  test 97.43%  (52s)
+[done] AdamW + GHD-AI         seed 123  lr 0.001  70%@100  80%@110  90%@230  test 97.19%  (59s)
+[done] AdamW + GHD-AI         seed 7    lr 0.001  70%@100  80%@130  90%@230  test 97.48%  (59s)
+[done] LARS + GHD-AI          seed 42   lr 1      70%@180  80%@240  90%@410  test 96.40%  (62s)
+[done] LARS + GHD-AI          seed 123  lr 1      70%@180  80%@220  90%@440  test 97.06%  (63s)
+[done] LARS + GHD-AI          seed 7    lr 1      70%@220  80%@270  90%@450  test 96.76%  (66s)
+[done] LNGD + GHD-AI          seed 42   lr 0.1    70%@None  80%@None  90%@None  test 62.75%  (67s)
+[done] LNGD + GHD-AI          seed 123  lr 0.1    70%@None  80%@None  90%@None  test 64.03%  (66s)
+[done] LNGD + GHD-AI          seed 7    lr 0.1    70%@None  80%@None  90%@None  test 55.15%  (64s)
+
+Optimizer          Steps→70%    Steps→80%    Steps→90%    AUC             Final Acc (%)   Interventions
+-------------------------------------------------------------------------------------------------------
+SGD                407 ± 17     473 ± 9      637 ± 42     89.27 ± 0.21    96.69 ± 0.41    0 ± 0        
+SGD + GHD-Rules    260 ± 16     313 ± 40     487 ± 17     92.00 ± 0.30    97.02 ± 0.21    1151 ± 148   
+SGD + GHD-AI       260 ± 16     300 ± 22     487 ± 17     91.93 ± 0.29    96.81 ± 0.66    1128 ± 109   
+AdamW              *100 ± 0*    *117 ± 9*    *230 ± 0*    *94.85 ± 0.15*  *97.47 ± 0.29*  0 ± 0        
+AdamW + GHD-Rules  100 ± 0      117 ± 9      230 ± 0      94.85 ± 0.15    97.47 ± 0.29    0 ± 0        
+AdamW + GHD-AI     100 ± 0      117 ± 9      230 ± 0      94.85 ± 0.15    97.47 ± 0.29    0 ± 0        
+LARS               193 ± 19     243 ± 21     433 ± 17     92.52 ± 0.27    96.72 ± 0.33    0 ± 0        
+LARS + GHD-AI      193 ± 19     243 ± 21     433 ± 17     92.52 ± 0.27    96.72 ± 0.33    0 ± 0        
+LNGD               not reached  not reached  not reached  36.22 ± 2.77    60.76 ± 3.86    0 ± 0        
+LNGD + GHD-AI      not reached  not reached  not reached  36.22 ± 2.77    60.76 ± 3.86    0 ± 0        
+* = best in column. Steps are mean ± std over seeds that reached the threshold; (k/n) = seeds that reached it.
+
+Summary written to results/exp2/exp1_summary.csv
