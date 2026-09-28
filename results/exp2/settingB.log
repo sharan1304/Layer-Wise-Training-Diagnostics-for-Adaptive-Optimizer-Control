@@ -1,0 +1,18 @@
+Experiment 2: mlp/mnist, 7 layers, gain 1, eval every 10 steps -> results/exp2/mlp_mnist_l7_g1_*.json
+Learning rates: sgd=0.1, adamw=0.001, lars=1, lngd=0.1 | steps: 5000
+=== Phase 1: baselines + GHD-Rules ===
+Running 6 run(s) x 5000 steps with 3 worker(s)...
+[done] SGD                    seed 123  lr 0.1    70%@None  80%@None  90%@None  test 10.32%  (27s)
+[done] SGD                    seed 7    lr 0.1    70%@None  80%@None  90%@None  test 10.32%  (27s)
+[done] SGD                    seed 42   lr 0.1    70%@None  80%@None  90%@None  test 11.35%  (27s)
+[done] SGD + GHD-Rules        seed 123  lr 0.1    70%@370  80%@460  90%@740  test 95.02%  (31s)
+[done] SGD + GHD-Rules        seed 42   lr 0.1    70%@350  80%@430  90%@690  test 95.81%  (31s)
+[done] SGD + GHD-Rules        seed 7    lr 0.1    70%@690  80%@900  90%@1180  test 95.45%  (31s)
+
+Optimizer        Steps→70%    Steps→80%    Steps→90%    AUC             Final Acc (%)   Interventions
+-----------------------------------------------------------------------------------------------------
+SGD              not reached  not reached  not reached  10.59 ± 0.01    9.99 ± 0.71     0 ± 0        
+SGD + GHD-Rules  *470 ± 156*  *597 ± 215*  *870 ± 220*  *87.62 ± 2.01*  *95.56 ± 0.31*  3143 ± 413   
+* = best in column. Steps are mean ± std over seeds that reached the threshold; (k/n) = seeds that reached it.
+
+Summary written to results/exp2/exp1_summary.csv
