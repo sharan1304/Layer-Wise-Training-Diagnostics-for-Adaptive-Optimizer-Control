@@ -1,0 +1,86 @@
+=== Learning-rate sweep (500 steps, seed 42) ===
+  SGD   lr=0.001  val_acc@500 =  11.0%
+  SGD   lr=0.01   val_acc@500 =   9.8%
+  SGD   lr=0.05   val_acc@500 =   9.8%
+  SGD   lr=0.1    val_acc@500 =  11.0%
+  SGD   lr=0.3    val_acc@500 =  11.0%
+  SGD   lr=0.5    val_acc@500 =  11.0%
+  SGD   lr=1      val_acc@500 =   9.8%
+  -> SGD lr = 0.001  (WARNING: no lr reached 50% by step 500)
+  LARS  lr=0.001  val_acc@500 =   9.8%
+  LARS  lr=0.01   val_acc@500 =  11.0%
+  LARS  lr=0.05   val_acc@500 =  11.0%
+  LARS  lr=0.1    val_acc@500 =  11.0%
+  LARS  lr=0.3    val_acc@500 =   9.9%
+  LARS  lr=0.5    val_acc@500 =   9.9%
+  LARS  lr=1      val_acc@500 =   9.9%
+  -> LARS lr = 0.01  (WARNING: no lr reached 50% by step 500)
+  LNGD  lr=0.001  val_acc@500 =   9.8%
+  LNGD  lr=0.01   val_acc@500 =   9.8%
+  LNGD  lr=0.05   val_acc@500 =   9.8%
+  LNGD  lr=0.1    val_acc@500 =  11.0%
+  LNGD  lr=0.3    val_acc@500 =  11.0%
+  LNGD  lr=0.5    val_acc@500 =  11.0%
+  LNGD  lr=1      val_acc@500 =  20.4%
+  -> LNGD lr = 1.0  (WARNING: no lr reached 50% by step 500)
+Learning rates: sgd=0.001, adamw=0.001, lars=0.01, lngd=1
+=== Phase 1: baselines + GHD-Rules ===
+Running 18 run(s) x 5000 steps with 8 worker(s)...
+[done] SGD                    seed 42   lr 0.001  70%@None  80%@None  90%@None  test 11.35%  (43s)
+[done] SGD                    seed 7    lr 0.001  70%@None  80%@None  90%@None  test 10.28%  (43s)
+[done] SGD                    seed 123  lr 0.001  70%@None  80%@None  90%@None  test 11.35%  (43s)
+[done] AdamW                  seed 123  lr 0.001  70%@400  80%@750  90%@1450  test 96.60%  (46s)
+[done] AdamW                  seed 42   lr 0.001  70%@700  80%@850  90%@1650  test 96.30%  (46s)
+[done] SGD + GHD-Rules        seed 7    lr 0.001  70%@None  80%@None  90%@None  test 10.28%  (50s)
+[done] SGD + GHD-Rules        seed 42   lr 0.001  70%@None  80%@None  90%@None  test 11.35%  (50s)
+[done] SGD + GHD-Rules        seed 123  lr 0.001  70%@None  80%@None  90%@None  test 11.35%  (50s)
+[done] AdamW                  seed 7    lr 0.001  70%@550  80%@700  90%@1350  test 96.31%  (50s)
+[done] AdamW + GHD-Rules      seed 42   lr 0.001  70%@800  80%@1100  90%@1500  test 96.26%  (57s)
+[done] AdamW + GHD-Rules      seed 123  lr 0.001  70%@400  80%@750  90%@1450  test 96.60%  (57s)
+[done] LARS                   seed 42   lr 0.01   70%@None  80%@None  90%@None  test 11.35%  (55s)
+[done] AdamW + GHD-Rules      seed 7    lr 0.001  70%@900  80%@950  90%@1200  test 95.46%  (58s)
+[done] LARS                   seed 7    lr 0.01   70%@None  80%@None  90%@None  test 11.35%  (55s)
+[done] LARS                   seed 123  lr 0.01   70%@None  80%@None  90%@None  test 11.35%  (56s)
+[done] LNGD                   seed 42   lr 1      70%@4650  80%@None  90%@None  test 69.55%  (57s)
+[done] LNGD                   seed 123  lr 1      70%@None  80%@None  90%@None  test 66.70%  (36s)
+[done] LNGD                   seed 7    lr 1      70%@None  80%@None  90%@None  test 62.33%  (31s)
+=== Training GHDController from GHD-Rules logs ===
+Training GHDController on 29460 layer-steps from 6 GHD-Rules runs
+  class counts: {'healthy': 18782, 'vanishing': 10675, 'exploding': 3, 'oscillating': 0, 'noisy': 0}
+  epoch   1  train 0.5479  val 0.1128  val_mode_acc 0.982
+  epoch  10  train 0.0252  val 0.0208  val_mode_acc 0.995
+  epoch  20  train 0.0183  val 0.0159  val_mode_acc 0.996
+  epoch  30  train 0.0161  val 0.0143  val_mode_acc 0.996
+  epoch  40  train 0.0138  val 0.0136  val_mode_acc 0.995
+  epoch  50  train 0.0130  val 0.0132  val_mode_acc 0.996
+Saved results/ghd_controller.pt (best val loss 0.0123)
+=== Phase 2: GHD-AI ===
+Running 12 run(s) x 5000 steps with 8 worker(s)...
+[done] SGD + GHD-AI           seed 7    lr 0.001  70%@None  80%@None  90%@None  test 10.28%  (101s)
+[done] SGD + GHD-AI           seed 123  lr 0.001  70%@None  80%@None  90%@None  test 11.35%  (101s)
+[done] SGD + GHD-AI           seed 42   lr 0.001  70%@None  80%@None  90%@None  test 11.35%  (101s)
+[done] AdamW + GHD-AI         seed 123  lr 0.001  70%@400  80%@750  90%@1450  test 96.60%  (103s)
+[done] AdamW + GHD-AI         seed 7    lr 0.001  70%@600  80%@950  90%@1350  test 95.44%  (104s)
+[done] AdamW + GHD-AI         seed 42   lr 0.001  70%@1000  80%@1150  90%@1550  test 96.48%  (104s)
+[done] LARS + GHD-AI          seed 42   lr 0.01   70%@None  80%@None  90%@None  test 11.35%  (107s)
+[done] LARS + GHD-AI          seed 123  lr 0.01   70%@None  80%@None  90%@None  test 11.35%  (107s)
+[done] LARS + GHD-AI          seed 7    lr 0.01   70%@None  80%@None  90%@None  test 11.35%  (57s)
+[done] LNGD + GHD-AI          seed 42   lr 1      70%@4650  80%@None  90%@None  test 69.55%  (59s)
+[done] LNGD + GHD-AI          seed 123  lr 1      70%@None  80%@None  90%@None  test 66.70%  (59s)
+[done] LNGD + GHD-AI          seed 7    lr 1      70%@None  80%@None  90%@None  test 62.33%  (58s)
+
+Optimizer          Steps→70%       Steps→80%    Steps→90%     AUC             Final Acc (%) 
+--------------------------------------------------------------------------------------------
+SGD                not reached     not reached  not reached   10.69 ± 0.03    10.94 ± 0.07  
+SGD + GHD-Rules    not reached     not reached  not reached   10.69 ± 0.03    10.94 ± 0.07  
+SGD + GHD-AI       not reached     not reached  not reached   10.69 ± 0.03    10.94 ± 0.07  
+AdamW              *550 ± 122*     *767 ± 62*   1483 ± 125    *85.78 ± 1.25*  *96.11 ± 0.20*
+AdamW + GHD-Rules  700 ± 216       933 ± 143    *1383 ± 131*  85.11 ± 1.70    95.88 ± 0.36  
+AdamW + GHD-AI     667 ± 249       950 ± 163    1450 ± 82     84.78 ± 2.10    95.89 ± 0.41  
+LARS               not reached     not reached  not reached   10.86 ± 0.02    10.99 ± 0.00  
+LARS + GHD-AI      not reached     not reached  not reached   10.86 ± 0.02    10.99 ± 0.00  
+LNGD               4650 ± 0 (1/3)  not reached  not reached   45.26 ± 1.45    66.18 ± 3.74  
+LNGD + GHD-AI      4650 ± 0 (1/3)  not reached  not reached   45.26 ± 1.45    66.18 ± 3.74  
+* = best in column. Steps are mean ± std over seeds that reached the threshold; (k/n) = seeds that reached it.
+
+Summary written to results/exp1_summary.csv
