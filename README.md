@@ -132,6 +132,14 @@ adaptive optimizer/
 
 ---
 
+## Results Data
+
+Result JSON files are not tracked in this repository (they total ~150 files and are excluded by .gitignore).
+To reproduce the results, run the experiments as described below. The summary CSV files for
+Experiment 2 are tracked and show the aggregated numbers without re-running.
+
+---
+
 ## How to Run
 
 **Install:**
