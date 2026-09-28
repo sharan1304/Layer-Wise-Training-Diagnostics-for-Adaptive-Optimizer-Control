@@ -162,6 +162,33 @@ class TestHook(unittest.TestCase):
         self.assertEqual(list(hook.logs[-1]["layers"]), ["L1", "L2", "L3"])
         self.assertGreater(hook.logs[-1]["layers"]["L1"]["s1"], 0.0)
 
+    def test_vanish_only_mode_skips_oscillation_correction(self) -> None:
+        torch.manual_seed(0)
+        model = SigmoidMLP(num_layers=3, hidden_dim=8)
+        opt = torch.optim.SGD(model.parameters(), lr=0.1)
+        hook = GHDHook(model, mode="rules_vanish_only", warmup=1, optimizer=opt)
+        self.assertEqual(hook.correcting, {"vanishing", "recovering"})
+        for _ in range(3):  # build prev_delta so an oscillation correction would be possible
+            x, y = self._batch()
+            opt.zero_grad()
+            nn.functional.cross_entropy(model(x), y).backward()
+            hook.pre_step(2.3)
+            opt.step()
+            hook.post_step()
+        x, y = self._batch()
+        opt.zero_grad()
+        nn.functional.cross_entropy(model(x), y).backward()
+        hook.pre_step(2.3)
+        hook._pending["modes"] = ["oscillating"] * len(hook.layers)
+        hook._pending["strengths"] = [0.9] * len(hook.layers)
+        hook._pending["suspended"] = False
+        opt.step()
+        after_opt = [m.weight.detach().clone() for m in hook.layers]
+        hook.post_step()
+        for w, m in zip(after_opt, hook.layers):
+            self.assertTrue(torch.equal(w, m.weight))
+        self.assertEqual(hook.total_interventions, 0)
+
     def test_ai_mode_falls_back_without_checkpoint(self) -> None:
         with self.assertWarns(UserWarning):
             hook = GHDHook(SigmoidMLP(num_layers=3, hidden_dim=8), mode="ai", controller_path="/nonexistent.pt")

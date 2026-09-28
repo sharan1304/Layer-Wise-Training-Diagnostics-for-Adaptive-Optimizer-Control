@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .experiment import CONFIGS, config_label
+from .experiment import TABLE_CONFIGS, config_label
 from .paths import result_files
 
 
@@ -34,7 +34,7 @@ def load_results(results_dir: str | Path = "results", with_logs: bool = False, p
 def aggregate(results: list[dict]) -> pd.DataFrame:
     """One row per (optimizer, ghd_mode) with mean/std over seeds."""
     rows = []
-    for opt, ghd in CONFIGS:
+    for opt, ghd in TABLE_CONFIGS:
         runs = [r for r in results if r["config"]["optimizer"] == opt and r["config"]["ghd_mode"] == ghd]
         if not runs:
             continue

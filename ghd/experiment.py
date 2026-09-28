@@ -45,9 +45,12 @@ CONFIGS = [
     ("lars", "none"), ("lars", "ai"),
     ("lngd", "none"), ("lngd", "ai"),
 ]
-PHASE_OF_GHD = {"none": 1, "rules": 1, "ai": 2}
+# Ablations: run only when requested explicitly with --ghd; listed in tables after their baseline.
+ABLATION_CONFIGS = [("sgd", "rules_vanish_only")]
+TABLE_CONFIGS = [CONFIGS[0], *ABLATION_CONFIGS, *CONFIGS[1:]]
+PHASE_OF_GHD = {"none": 1, "rules": 1, "rules_vanish_only": 1, "ai": 2}
 OPT_LABEL = {"sgd": "SGD", "adamw": "AdamW", "lars": "LARS", "lngd": "LNGD"}
-GHD_LABEL = {"none": "", "rules": " + GHD-Rules", "ai": " + GHD-AI"}
+GHD_LABEL = {"none": "", "rules": " + GHD-Rules", "rules_vanish_only": " + GHD-Vanish-Only", "ai": " + GHD-AI"}
 
 
 def config_label(opt: str, ghd: str) -> str:

@@ -28,12 +28,16 @@ from pathlib import Path
 
 from ghd.controller import ControllerTrainer, checkpoint_sources, rules_log_files
 from ghd.experiment import (
-    CONFIGS, DATASETS, EVAL_EVERY, EVAL_EVERY_NEW, INIT_GAIN, MODELS, N_STEPS_BY_OPT, NUM_LAYERS, PHASE_OF_GHD,
+    ABLATION_CONFIGS, CONFIGS, DATASETS, EVAL_EVERY, EVAL_EVERY_NEW, INIT_GAIN, MODELS, N_STEPS_BY_OPT, NUM_LAYERS, PHASE_OF_GHD,
     SEEDS, RUNNING_DIR, check_supported, config_label, lr_sweep, run_one,
 )
 from ghd.paths import EXP1_PREFIX, result_path, run_prefix
 from ghd.optimizers import OPTIMIZER_LR
 from ghd.summary import aggregate, load_results, print_table
+
+
+# Optimizers left out of an experiment's table (their runs stay on disk), with the note printed instead.
+EXCLUDED_FROM_TABLE = {2: {"lngd": "LNGD excluded from Exp 2 — lr requires separate sweep (see Exp 1b for LNGD results)."}}
 
 
 def train_controller(results_dir: Path, ckpt: Path, epochs: int, prefix: str | None = None) -> bool:
@@ -98,12 +102,31 @@ def report_quick_check(results: list[dict], step: int = 1000, target: float = 50
 
 
 def select_jobs(opts, ghds, phases, seeds) -> list[tuple[str, str, int]]:
+    """Jobs for the standard configs; ablation configs only when named in `ghds`."""
+    configs = CONFIGS + [c for c in ABLATION_CONFIGS if ghds and c[1] in ghds]
     return [
         (opt, ghd, seed)
-        for opt, ghd in CONFIGS
+        for opt, ghd in configs
         if (not opts or opt in opts) and (not ghds or ghd in ghds) and PHASE_OF_GHD[ghd] in phases
         for seed in seeds
     ]
+
+
+def report(results: list[dict], args, results_dir: Path, write_csv: bool) -> None:
+    excluded = EXCLUDED_FROM_TABLE.get(args.exp, {})
+    df = aggregate([r for r in results if r["config"]["optimizer"] not in excluded])
+    print()
+    print_table(df)
+    notes = list(excluded.values())
+    for note in notes:
+        print(note)
+    if write_csv and not df.empty:
+        # One CSV per spec: several Exp 2+ settings can share a results folder.
+        csv = results_dir / ("exp1_summary.csv" if args.exp == 1 else f"{args.prefix}_summary.csv")
+        df.drop(columns=["seeds"]).to_csv(csv, index=False)
+        print(f"\nSummary written to {csv}")
+        if notes:
+            csv.with_suffix(".notes.txt").write_text("\n".join(notes) + "\n")
 
 
 def main() -> None:
@@ -114,7 +137,8 @@ def main() -> None:
     p.add_argument("--train_controller", action="store_true")
     p.add_argument("--lr_sweep", action="store_true", help="re-run the SGD/LARS/LNGD learning-rate sweep")
     p.add_argument("--opt", nargs="+", choices=["sgd", "adamw", "lars", "lngd"])
-    p.add_argument("--ghd", nargs="+", choices=["none", "rules", "ai"], help="filter GHD modes")
+    p.add_argument("--ghd", "--ghd_mode", dest="ghd", nargs="+", choices=list(PHASE_OF_GHD),
+                   help="filter GHD modes; 'rules_vanish_only' (ablation) runs only when named here")
     p.add_argument("--seeds", type=int, nargs="+", default=SEEDS)
     p.add_argument("--steps", type=int, default=None,
                    help=f"training steps (default per optimizer: {N_STEPS_BY_OPT})")
@@ -160,7 +184,7 @@ def main() -> None:
     ckpt = results_dir / "ghd_controller.pt"
 
     if args.summary:
-        print_table(aggregate(load_results(results_dir, prefix=args.prefix)))
+        report(load_results(results_dir, prefix=args.prefix), args, results_dir, write_csv=False)
         return
     if args.lr_sweep:
         print("=== Learning-rate sweep (500 steps, seed 42) ===")
@@ -191,8 +215,7 @@ def run_experiment(args, results_dir: Path, ckpt: Path) -> None:
     if 1 in phases:
         print("=== Phase 1: baselines + GHD-Rules ===")
         run_many(select_jobs(args.opt, args.ghd, [1], args.seeds), args, results_dir, ckpt)
-    if 2 in phases:
-        jobs = select_jobs(args.opt, args.ghd, [2], args.seeds)
+    if 2 in phases and (jobs := select_jobs(args.opt, args.ghd, [2], args.seeds)):
         if jobs and args.phase is None and controller_is_stale(results_dir, ckpt, args.prefix):
             print("=== Training GHDController from GHD-Rules logs ===")
             train_controller(results_dir, ckpt, args.epochs, args.prefix)
@@ -204,12 +227,7 @@ def run_experiment(args, results_dir: Path, ckpt: Path) -> None:
     results = load_results(results_dir, prefix=args.prefix)
     if args.quick_check:
         report_quick_check(results)
-    df = aggregate(results)
-    print()
-    print_table(df)
-    if not df.empty:
-        df.drop(columns=["seeds"]).to_csv(results_dir / "exp1_summary.csv", index=False)
-        print(f"\nSummary written to {results_dir / 'exp1_summary.csv'}")
+    report(results, args, results_dir, write_csv=True)
 
 
 if __name__ == "__main__":

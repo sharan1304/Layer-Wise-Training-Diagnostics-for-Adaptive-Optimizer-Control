@@ -13,7 +13,7 @@ from pathlib import Path
 
 EXP1_PREFIX = "mlp_mnist"
 _OPTS = "sgd|adamw|lars|lngd"
-_GHDS = "none|rules|ai"
+_GHDS = "none|rules_vanish_only|rules|ai"
 
 
 def run_prefix(model: str, dataset: str, layers: int, gain: float) -> str:

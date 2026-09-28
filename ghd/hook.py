@@ -13,6 +13,7 @@ cancelled by optimizers that normalise the gradient (AdamW, LARS, LNGD).
 Modes:
     'passive' - observe and log only (rule detector runs, nothing is modified)
     'rules'   - rule detector + rule confidence scores drive corrections
+    'rules_vanish_only' - as 'rules', but only vanishing/recovering corrections are applied (ablation)
     'ai'      - GHDController drives corrections (falls back to rules if no checkpoint)
 """
 
@@ -33,6 +34,7 @@ from .core import ALL_MODES, EPS, MODES, WARMUP_STEPS, LayerSignals, LayerState,
 
 
 CORRECTING_MODES = {"vanishing", "recovering", "exploding", "oscillating", "noisy"}
+VANISH_MODES = {"vanishing", "recovering"}
 RESCALE_MAX = 1000.0
 RECOVERY_DECAY = 0.01
 
@@ -55,7 +57,7 @@ class GHDHook:
         log_every: int = 10,
         optimizer: torch.optim.Optimizer | None = None,
     ) -> None:
-        if mode not in ("passive", "rules", "ai"):
+        if mode not in ("passive", "rules", "rules_vanish_only", "ai"):
             raise ValueError(f"Unknown GHD mode: {mode}")
         # Monitored layers in registration order (assumed to match forward order); a conv weight
         # is treated as one flat gradient tensor, like a linear weight.
@@ -67,6 +69,7 @@ class GHDHook:
         self.sqrt_p = [math.sqrt(m.weight.numel()) for m in self.layers]
         self.states = [LayerState() for _ in self.layers]
         self.mode = mode
+        self.correcting = VANISH_MODES if mode == "rules_vanish_only" else CORRECTING_MODES
         self.warmup = warmup
         self.enable_noisy = enable_noisy
         self.log_every = log_every
@@ -213,7 +216,7 @@ class GHDHook:
         for i in range(n):
             mode, strength, sig = pending["modes"][i], pending["strengths"][i], pending["signals"][i]
             raw = deltas[i]
-            if pending["active"] and not pending["suspended"] and mode in CORRECTING_MODES:
+            if pending["active"] and not pending["suspended"] and mode in self.correcting:
                 decay = [self._decay_component(p, b) for p, b in zip(self.layer_params[i], before[i])]
                 corrected = self._correct(i, raw, mode, strength, sig, norms[i], output_norm, decay)
                 if corrected is not None:
