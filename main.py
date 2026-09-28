@@ -13,6 +13,8 @@
 
     python main.py --exp 2 --layers 7 --gain 2.5 --phase 1 --workers 4
                                                   # Experiment 2 into results/exp2/, eval every 10 steps
+    python main.py --exp 3 --model cnn --dataset cifar10 --gain 1.5 --phase 1
+                                                  # Experiment 3 (SigmoidCNN, 6 weight layers) into results/exp3/
 
 Runs are resumable: an existing result JSON is skipped. Experiment 1 files are
 results/mlp_mnist_{opt}_{ghd}_seed{seed}.json; Experiment 2+ files are
@@ -28,7 +30,7 @@ from pathlib import Path
 
 from ghd.controller import ControllerTrainer, checkpoint_sources, rules_log_files
 from ghd.experiment import (
-    ABLATION_CONFIGS, CONFIGS, DATASETS, EVAL_EVERY, EVAL_EVERY_NEW, INIT_GAIN, MODELS, N_STEPS_BY_OPT, NUM_LAYERS, PHASE_OF_GHD,
+    ABLATION_CONFIGS, CNN_LAYERS, CONFIGS, DATASETS, EVAL_EVERY, EVAL_EVERY_NEW, INIT_GAIN, MODELS, N_STEPS_BY_OPT, NUM_LAYERS, PHASE_OF_GHD,
     SEEDS, RUNNING_DIR, check_supported, config_label, lr_sweep, run_one,
 )
 from ghd.paths import EXP1_PREFIX, result_path, run_prefix
@@ -145,7 +147,8 @@ def main() -> None:
     p.add_argument("--workers", type=int, default=1, help="parallel runs (each uses 1 thread)")
     p.add_argument("--model", choices=MODELS, default="mlp")
     p.add_argument("--dataset", choices=DATASETS, default="mnist")
-    p.add_argument("--layers", type=int, default=NUM_LAYERS, help="number of MLP layers")
+    p.add_argument("--layers", type=int, default=None,
+                   help=f"number of MLP layers (default {NUM_LAYERS}); the CNN is fixed at {CNN_LAYERS} weight layers")
     p.add_argument("--gain", type=float, default=INIT_GAIN, help="xavier init gain")
     p.add_argument("--results_dir", default=None, help="default: results/ for Exp 1, results/exp{N}/ for Exp 2+")
     p.add_argument("--epochs", type=int, default=50, help="controller training epochs")
@@ -163,6 +166,12 @@ def main() -> None:
     if args.quick_check:
         args.exp, args.phase, args.ghd = args.exp or 1, 1, ["none", "rules"]
 
+    if args.model == "cnn":
+        if args.layers not in (None, CNN_LAYERS):
+            p.error(f"--layers does not apply to the CNN (fixed at {CNN_LAYERS} weight layers)")
+        args.layers = CNN_LAYERS
+    elif args.layers is None:
+        args.layers = NUM_LAYERS
     spec = (args.model, args.dataset, args.layers, args.gain)
     if args.exp == 1 and spec != ("mlp", "mnist", NUM_LAYERS, INIT_GAIN):
         p.error(f"Experiment 1 is fixed at mlp/mnist, {NUM_LAYERS} layers, gain {INIT_GAIN:g}; use --exp 2 for other specs")

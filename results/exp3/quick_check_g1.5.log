@@ -1,0 +1,18 @@
+Experiment 3: cnn/cifar10, 6 layers, gain 1.5, eval every 10 steps -> results/exp3/quick_check/cnn_cifar10_l6_g1.5_*.json
+Learning rates: sgd=0.1, adamw=0.001, lars=1, lngd=0.1 | steps: 1000
+=== Phase 1: baselines + GHD-Rules ===
+Running 2 run(s) x 1000 steps with 2 worker(s)...
+[done] SGD                    seed 42   lr 0.1    70%@None  80%@None  90%@None  test 43.74%  (1067s)
+[done] SGD + GHD-Rules        seed 42   lr 0.1    70%@None  80%@None  90%@None  test 46.39%  (1078s)
+
+=== Quick check: validation accuracy at step 1000 (target > 50%) ===
+  SGD                seed 42   lr 0.1    val@1000 = 42.4%  final = 42.4%  FAIL
+  SGD + GHD-Rules    seed 42   lr 0.1    val@1000 = 45.3%  final = 45.3%  FAIL
+
+Optimizer        Steps→70%    Steps→80%    Steps→90%    AUC             Final Acc (%)   Interventions
+-----------------------------------------------------------------------------------------------------
+SGD              not reached  not reached  not reached  26.60 ± 0.00    42.38 ± 0.00    0 ± 0        
+SGD + GHD-Rules  not reached  not reached  not reached  *33.09 ± 0.00*  *45.30 ± 0.00*  528 ± 0      
+* = best in column. Steps are mean ± std over seeds that reached the threshold; (k/n) = seeds that reached it.
+
+Summary written to results/exp3/quick_check/cnn_cifar10_l6_g1.5_summary.csv

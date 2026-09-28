@@ -14,7 +14,7 @@ from ghd.core import (
     LayerSignals, LayerState, confidence_noise, confidence_oscil, confidence_vanish, confidence_vanish_from_s2_s3,
     rule_strength, sigmoid_clipped,
 )
-from ghd.experiment import SigmoidMLP, curve_auc, run_one, steps_to_threshold
+from ghd.experiment import SigmoidCNN, SigmoidMLP, curve_auc, run_one, steps_to_threshold
 from ghd.hook import GHDHook
 from ghd.optimizers import LARS, LNGD, _trust_ratio
 from ghd.paths import result_files, run_prefix
@@ -196,6 +196,12 @@ class TestHook(unittest.TestCase):
 
 
 class TestExperiment(unittest.TestCase):
+    def test_sigmoid_cnn_output_shape(self) -> None:
+        model = SigmoidCNN(gain=1.5)
+        self.assertEqual(tuple(model(torch.randn(4, 3, 32, 32)).shape), (4, 10))
+        hook = GHDHook(model, mode="passive")
+        self.assertEqual([type(m) for m in hook.layers], [nn.Conv2d] * 4 + [nn.Linear] * 2)
+
     def test_metrics(self) -> None:
         acc, steps = [40.0, 72.0, 85.0, 91.0], [50, 100, 150, 200]
         s = steps_to_threshold(acc, steps)
@@ -232,8 +238,8 @@ class TestExperiment(unittest.TestCase):
             self.assertEqual([p.name for p in result_files(tmp, prefix)], ["mlp_mnist_l7_g2.5_sgd_none_seed42.json"])
             self.assertEqual([p.name for p in result_files(tmp, "mlp_mnist")], ["mlp_mnist_sgd_none_seed42.json"])
             with self.assertRaises(NotImplementedError):
-                run_one("sgd", "none", 42, n_steps=10, results_dir=tmp, verbose=False, model_name="cnn",
-                        dataset="cifar10", prefix="cnn_cifar10_l4_g2.5")
+                run_one("sgd", "none", 42, n_steps=10, results_dir=tmp, verbose=False, model_name="mlp",
+                        dataset="cifar10", prefix="mlp_cifar10_l7_g2.5")
 
 
 if __name__ == "__main__":

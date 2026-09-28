@@ -1,7 +1,8 @@
 """Optimizer x GHD convergence race on deep sigmoid nets.
 
-Experiment 1: 10-layer sigmoid MLP on MNIST (gain 4.0). Experiment 2+: same pipeline with the
-model spec (layers, gain) taken from the CLI and a spec-specific file prefix.
+Experiment 1: 10-layer sigmoid MLP on MNIST (gain 4.0). Experiment 2: sigmoid MLP on MNIST with the
+spec (layers, gain) from the CLI. Experiment 3: 4-conv sigmoid CNN on CIFAR-10. Experiments 2+ use a
+spec-specific file prefix.
 """
 
 from __future__ import annotations
@@ -63,11 +64,14 @@ MODELS = ["mlp", "cnn"]
 DATASETS = ["mnist", "cifar10"]
 
 
+CNN_LAYERS = 6  # SigmoidCNN weight layers: 4 conv + 2 linear (fixed architecture)
+SUPPORTED = {("mlp", "mnist"), ("cnn", "cifar10")}
+
+
 def check_supported(model: str, dataset: str) -> None:
-    if (model, dataset) != ("mlp", "mnist"):
+    if (model, dataset) not in SUPPORTED:
         raise NotImplementedError(
-            f"model={model!r}, dataset={dataset!r} is not implemented yet: only the sigmoid MLP on MNIST "
-            "exists (SigmoidCNN and the CIFAR-10 loader are still to be written)."
+            f"model={model!r}, dataset={dataset!r} is not supported: use mlp/mnist or cnn/cifar10."
         )
 
 
@@ -88,13 +92,78 @@ class SigmoidMLP(nn.Module):
         return self.layers[-1](x)
 
 
-_DATA_CACHE: dict[str, tuple[torch.Tensor, ...]] = {}
+class SigmoidCNN(nn.Module):
+    """4 conv + 2 linear layers, sigmoid activations, for 3x32x32 inputs (CIFAR-10)."""
+
+    def __init__(self, num_classes: int = 10, gain: float = 1.5) -> None:
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1), nn.Sigmoid(), nn.MaxPool2d(2),  # -> 32x16x16
+            nn.Conv2d(32, 64, 3, padding=1), nn.Sigmoid(), nn.MaxPool2d(2),  # -> 64x8x8
+            nn.Conv2d(64, 128, 3, padding=1), nn.Sigmoid(),  # -> 128x8x8
+            nn.Conv2d(128, 128, 3, padding=1), nn.Sigmoid(),  # -> 128x8x8
+        )
+        self.classifier = nn.Sequential(nn.Linear(128 * 8 * 8, 256), nn.Sigmoid(), nn.Linear(256, num_classes))
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                nn.init.xavier_uniform_(m.weight, gain=gain)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.classifier(self.features(x).flatten(1))
+
+
+def build_model(model_name: str, num_layers: int, init_gain: float) -> nn.Module:
+    if model_name == "cnn":
+        return SigmoidCNN(gain=init_gain)
+    return SigmoidMLP(num_layers=num_layers, init_gain=init_gain)
+
+
+def model_description(model_name: str, num_layers: int, init_gain: float) -> str:
+    if model_name == "cnn":
+        return f"SigmoidCNN(conv32-64-128-128, fc256-10, sigmoid, xavier_uniform gain={init_gain:g})"
+    return f"SigmoidMLP(784-256x{num_layers - 1}-10, sigmoid, xavier_uniform gain={init_gain:g})"
+
+
+DATASET_DESCRIPTION = {
+    "mnist": "MNIST (50k train / 10k val / 10k test)",
+    "cifar10": "CIFAR-10 (45k train / 5k val / 10k test)",
+}
+_DATA_CACHE: dict[tuple[str, str], tuple[torch.Tensor, ...]] = {}
+
+
+def load_data(dataset: str, device: str = "cpu") -> tuple[torch.Tensor, ...]:
+    return load_cifar10(device=device) if dataset == "cifar10" else load_mnist(device=device)
+
+
+def load_cifar10(root: str = "data", device: str = "cpu") -> tuple[torch.Tensor, ...]:
+    """Normalised CIFAR-10 as in-memory NCHW tensors: (x_train, y_train, x_val, y_val, x_test, y_test)."""
+    key = ("cifar10", device)
+    if key in _DATA_CACHE:
+        return _DATA_CACHE[key]
+    from torchvision import datasets
+
+    mean = torch.tensor([0.4914, 0.4822, 0.4465]).view(1, 3, 1, 1)
+    std = torch.tensor([0.2023, 0.1994, 0.2010]).view(1, 3, 1, 1)
+
+    def prep(ds):
+        x = torch.from_numpy(ds.data).permute(0, 3, 1, 2).float() / 255.0
+        return (x - mean) / std, torch.tensor(ds.targets)
+
+    x_full, y_full = prep(datasets.CIFAR10(root, train=True, download=True))
+    x_test, y_test = prep(datasets.CIFAR10(root, train=False, download=True))
+    perm = torch.randperm(len(x_full), generator=torch.Generator().manual_seed(SPLIT_SEED))
+    tr, va = perm[:45000], perm[45000:50000]
+    data = tuple(t.to(device) for t in (x_full[tr], y_full[tr], x_full[va], y_full[va], x_test, y_test))
+    _DATA_CACHE[key] = data
+    return data
 
 
 def load_mnist(root: str = "data", device: str = "cpu") -> tuple[torch.Tensor, ...]:
     """Normalised MNIST as in-memory tensors: (x_train, y_train, x_val, y_val, x_test, y_test)."""
-    if device in _DATA_CACHE:
-        return _DATA_CACHE[device]
+    key = ("mnist", device)
+    if key in _DATA_CACHE:
+        return _DATA_CACHE[key]
     from torchvision import datasets
 
     def prep(ds):
@@ -106,7 +175,7 @@ def load_mnist(root: str = "data", device: str = "cpu") -> tuple[torch.Tensor, .
     perm = torch.randperm(len(x_full), generator=torch.Generator().manual_seed(SPLIT_SEED))
     tr, va = perm[:50000], perm[50000:60000]
     data = tuple(t.to(device) for t in (x_full[tr], y_full[tr], x_full[va], y_full[va], x_test, y_test))
-    _DATA_CACHE[device] = data
+    _DATA_CACHE[key] = data
     return data
 
 
@@ -216,11 +285,11 @@ def train_run(
     np.random.seed(seed)
     torch.manual_seed(seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    x_tr, y_tr, x_va, y_va, x_te, y_te = load_mnist(device=device)
+    x_tr, y_tr, x_va, y_va, x_te, y_te = load_data(dataset, device=device)
     lr = OPTIMIZER_LR[opt] if lr is None else lr
     warmup_steps = LR_WARMUP_STEPS if opt in LR_WARMUP_OPTS else 0
 
-    model = SigmoidMLP(num_layers=num_layers, init_gain=init_gain).to(device)
+    model = build_model(model_name, num_layers, init_gain).to(device)
     optimizer = make_optimizer(opt, model.parameters(), lr=lr)
     # Baselines get a passive (observe-only) hook so their gradient health is logged too.
     hook = GHDHook(model, mode="passive" if ghd == "none" else ghd, controller_path=controller_path,
@@ -275,12 +344,12 @@ def train_run(
 
     return {
         "config": {
-            "model": f"SigmoidMLP(784-256x{num_layers - 1}-10, sigmoid, xavier_uniform gain={init_gain:g})",
+            "model": model_description(model_name, num_layers, init_gain),
             "model_name": model_name,
             "dataset_name": dataset,
             "num_layers": num_layers,
             "init_gain": init_gain,
-            "dataset": "MNIST (50k train / 10k val / 10k test)",
+            "dataset": DATASET_DESCRIPTION[dataset],
             "optimizer": opt,
             "ghd_mode": ghd,
             "seed": seed,
