@@ -10,7 +10,7 @@ Deep neural networks trained with sigmoid activations suffer from vanishing grad
 
 **GHD (Gradient Health Diagnostic)** attaches to any existing optimizer without replacing it. At every training step it:
 1. Computes 8 per-layer gradient health signals
-2. Classifies each layer into a failure mode (vanishing, exploding, oscillating) — noisy detection exists but is disabled by default due to calibration issues
+2. Classifies each layer into a failure mode (vanishing, exploding, oscillating) — noisy detection exists but is disabled by default
 3. Applies a targeted post-normalisation correction to struggling layers
 4. Logs diagnostic information for visualisation
 
