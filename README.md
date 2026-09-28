@@ -14,7 +14,7 @@ Deep neural networks trained with sigmoid activations suffer from vanishing grad
 3. Applies a targeted post-normalisation correction to struggling layers
 4. Logs diagnostic information for visualisation
 
-A two-head MLP controller learns to reproduce rule-based diagnoses, achieving 99.9% mode-classification accuracy.
+A two-head MLP controller learns to reproduce rule-based diagnoses, matching GHD-Rules convergence speed on SGD (300 vs 313 steps to 80%) — the primary evidence of controller quality. The 99.9% mode-classification accuracy reflects ~98% healthy examples in training data and should not be cited as standalone evidence.
 
 ---
 
@@ -22,17 +22,18 @@ A two-head MLP controller learns to reproduce rule-based diagnoses, achieving 99
 
 | Experiment | Model | Dataset | Result |
 |---|---|---|---|
-| Exp 1 | 10-layer Sigmoid MLP | MNIST (gain 1.0) | S_depth detects vanishing spanning 7 orders of magnitude |
+| Exp 1 | 10-layer Sigmoid MLP | MNIST (gain 1.0) | S_depth detects vanishing spanning 6 orders of magnitude |
 | Exp 2a | 7-layer Sigmoid MLP | MNIST (gain 1.5) | SGD+GHD reaches 80% in **300 steps vs 473** (37% faster) |
 | Exp 2b | 7-layer Sigmoid MLP | MNIST (gain 1.0) | GHD rescues a network plain SGD cannot train (9.99% → 95.56%) |
-| Exp 3 | 4-layer Sigmoid CNN | CIFAR-10 (gain 1.5) | Architecture transfer — same signals, no redesign |
+| Exp 3 | 6-layer Sigmoid CNN (4 conv + 2 linear) | CIFAR-10 (gain 1.5) | Gain sweep complete (1000 steps, 1 seed). Full run pending. |
 
 **Ablation:** vanishing correction alone (197 interventions) produces the full 37% speed-up.
 Oscillation corrections (950 additional interventions) add nothing measurable.
 
-**Why AdamW and LARS are unaffected:** their built-in magnitude normalisation
-cancels GHD's vanishing correction. GHD correctly makes zero interventions on these
-optimizers — this is the expected analytical result, not a failure.
+**Why AdamW and LARS are unaffected:** Under AdamW, GHD's detector flagged no vanishing
+steps — every layer was healthy throughout training, producing zero interventions. Under LARS,
+vanishing steps were detected but produced no corrections. GHD does not improve convergence
+for these optimizers in this setting.
 
 ---
 
@@ -52,11 +53,13 @@ Training loop
 │    S3  inter-layer ratio            │
 │    S4  direction consistency        │
 │    S5  noise (CV of norms)          │
-│    S6  oscillation (update cosine)  │
+│    S6  oscillation (mean gradient   │
+│        cosine, last 20 steps)       │
 │    S7  stability composite          │
 │    S_depth  vs output layer ★       │
 │                                     │
 │  Detection (priority order):        │
+│    Structural Vanishing →           │
 │    Exploding → Vanishing →          │
 │    Oscillating → Noisy → Healthy    │
 │                                     │
@@ -91,7 +94,7 @@ structural vanishing from the very first diagnosed step. S2 and S3 cannot do thi
 | S3 | q_l / q_{l+1} where q = ‖g‖/√P | Signal loss at layer boundary |
 | S4 | (cos(g_t, g_{t-1}) + 1) / 2 | Direction consistency |
 | S5 | clip(std₂₀ / mean₂₀, 0, 1) | Gradient noise |
-| S6 | mean of update cosines (20 steps) | Sustained oscillation |
+| S6 | mean of cos(g_t, g_{t-1}) over last 20 steps | Sustained oscillation |
 | S7 | clip(1 − S5 − max(0,−S6), 0, 1) | Stability composite |
 | S_depth | q_l / q_L | Signal vs output layer |
 
@@ -120,7 +123,8 @@ adaptive optimizer/
 ├── test_ghd.py          # 18 GHD tests
 ├── test_optimizer.py    # 17 older optimizer tests
 ├── results/
-│   ├── exp2/            # Exp 2 result JSONs (30 runs)
+│   ├── exp2/            # Exp 2 result JSONs (39 files: 30 Setting A,
+│   │                    #   6 Setting B, 3 ablation)
 │   └── archive_exp1a_gain1/  # Exp 1a results (detection evidence)
 └── requirements.txt
 ```
@@ -145,7 +149,7 @@ python main.py --quick
 python main.py --exp 2 --layers 7 --gain 1.5 --phase 1 --seeds 42 123 7 --workers 4
 
 # Train MLP controller
-python main.py --exp 2 --layers 7 --gain 1.5 --train_controller
+python main.py --train_controller --results_dir results/exp2/settingA/
 
 # Phase 2: AI controller runs
 python main.py --exp 2 --layers 7 --gain 1.5 --phase 2 --seeds 42 123 7 --workers 4
@@ -154,7 +158,7 @@ python main.py --exp 2 --layers 7 --gain 1.5 --phase 2 --seeds 42 123 7 --worker
 python main.py --exp 2 --layers 7 --gain 1.5 --opt sgd --ghd_mode rules_vanish_only --seeds 42 123 7
 ```
 
-**Experiment 3 — 4-layer CNN, CIFAR-10, gain 1.5:**
+**Experiment 3 — 6-layer Sigmoid CNN (4 conv + 2 linear), CIFAR-10, gain 1.5:**
 ```bash
 python main.py --exp 3 --model cnn --dataset cifar10 --gain 1.5 --phase 1 --workers 4
 ```
@@ -188,12 +192,12 @@ GHD attaches to all four. Only SGD benefits from corrections in the tested regim
 
 | Gain | S_depth Layer 1 | Trainable without GHD | GHD helps? |
 |---|---|---|---|
-| 1.0 (10-layer) | ~10⁻⁷ | No — stuck at chance | Rescues the network |
+| 1.0 (10-layer) | ~1.7×10⁻⁶ | No — stuck at chance | Rescues the network |
 | 1.5 (7-layer) | ~0.001 | Yes — slowly | 37% faster convergence |
-| 4.0 (10-layer) | ~0.002 | Yes — fast | No improvement needed |
+| 4.0 (10-layer) | ~0.057 | Yes — fast | No improvement needed |
 
-The correctable range is S_depth ∈ [0.001, 0.01]. GHD's 1000× correction cap
-closes gaps up to three orders of magnitude.
+GHD's 1000× correction cap closes gaps of up to three orders of magnitude. Exp 2b shows GHD
+rescuing a network with S_depth ~1×10⁻⁴, outside the typical detection threshold.
 
 ---
 
