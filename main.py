@@ -2,7 +2,9 @@
 
     python main.py --exp 1                        # phase 1 -> train controller -> phase 2
     python main.py --exp 1 --phase 1              # baselines + GHD-Rules
-    python main.py --train_controller             # distil GHDController from GHD-Rules logs
+    python main.py --train_controller             # distil GHDController from GHD-Rules logs (no runs)
+    python main.py --exp 2 --layers 7 --gain 1.5 --train_controller --results_dir results/exp2/
+                                                  # ... from that spec's logs only
     python main.py --exp 1 --phase 2              # GHD-AI configs
     python main.py --exp 1 --opt sgd --seeds 42   # one optimizer family, one seed
     python main.py --quick                        # 500 steps, seed 42, SGD only (results/quick/)
@@ -199,7 +201,9 @@ def main() -> None:
         print("=== Learning-rate sweep (500 steps, seed 42) ===")
         lr_sweep(results_dir)
     if args.train_controller:
+        # With --exp and a spec, only that spec's GHD-Rules logs are used. Never launches runs.
         train_controller(results_dir, ckpt, args.epochs, args.prefix)
+        return
     if args.exp is None:
         if not (args.train_controller or args.lr_sweep):
             p.print_help()
