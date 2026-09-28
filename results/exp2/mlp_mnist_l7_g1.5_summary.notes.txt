@@ -1,0 +1,1 @@
+LNGD excluded from Exp 2 — lr requires separate sweep (see Exp 1b for LNGD results).
