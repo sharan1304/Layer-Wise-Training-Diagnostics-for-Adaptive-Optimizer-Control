@@ -9,14 +9,16 @@ import numpy as np
 import pandas as pd
 
 from .experiment import CONFIGS, config_label
+from .paths import result_files
 
 
 TABLE_THRESHOLDS = ["70", "80", "90"]
 
 
-def load_results(results_dir: str | Path = "results", with_logs: bool = False) -> list[dict]:
+def load_results(results_dir: str | Path = "results", with_logs: bool = False, prefix: str | None = None) -> list[dict]:
+    """Result JSONs in `results_dir`; with `prefix`, only that experiment spec's files."""
     out = []
-    for path in sorted(Path(results_dir).glob("mlp_mnist_*_seed*.json")):
+    for path in result_files(results_dir, prefix):
         try:
             with open(path) as f:
                 r = json.load(f)
@@ -97,7 +99,7 @@ TABLE_HEADER = ["Optimizer", "Steps→70%", "Steps→80%", "Steps→90%", "AUC",
 
 def print_table(df: pd.DataFrame) -> None:
     if df.empty:
-        print("No Experiment 1 results found.")
+        print("No results found.")
         return
     header = TABLE_HEADER + ["Interventions"]
     rows = [r + [f"{row['interventions_mean']:.0f} ± {row['interventions_std']:.0f}"]

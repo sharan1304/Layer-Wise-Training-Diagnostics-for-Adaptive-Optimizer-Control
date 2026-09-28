@@ -1,4 +1,8 @@
-"""Experiment 1: 10-layer sigmoid MLP on MNIST, optimizer x GHD convergence race."""
+"""Optimizer x GHD convergence race on deep sigmoid nets.
+
+Experiment 1: 10-layer sigmoid MLP on MNIST (gain 4.0). Experiment 2+: same pipeline with the
+model spec (layers, gain) taken from the CLI and a spec-specific file prefix.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +20,7 @@ import torch.nn.functional as F
 
 from .hook import GHDHook
 from .optimizers import OPTIMIZER_LR, make_optimizer
+from .paths import EXP1_PREFIX, result_path
 
 
 SEEDS = [42, 123, 7]
@@ -25,7 +30,8 @@ N_STEPS_BY_OPT = {"sgd": 10000, "lars": 10000, "lngd": 10000, "adamw": 5000}
 # Linear lr warmup from lr/10 to lr over the first steps (SGD and LARS only).
 LR_WARMUP_STEPS = 200
 LR_WARMUP_OPTS = {"sgd", "lars"}
-EVAL_EVERY = 50
+EVAL_EVERY = 50  # Experiment 1
+EVAL_EVERY_NEW = 10  # Experiment 2+: finer steps-to-threshold resolution
 BATCH_SIZE = 128
 LOG_EVERY = 10
 THRESHOLDS = [50, 60, 70, 80, 90, 95]
@@ -48,11 +54,18 @@ def config_label(opt: str, ghd: str) -> str:
     return OPT_LABEL[opt] + GHD_LABEL[ghd]
 
 
-def result_path(results_dir: str | Path, opt: str, ghd: str, seed: int) -> Path:
-    return Path(results_dir) / f"mlp_mnist_{opt}_{ghd}_seed{seed}.json"
-
-
 INIT_GAIN = 4.0  # xavier gain; 1.0 collapses the forward signal ~4x per sigmoid layer
+NUM_LAYERS = 10
+MODELS = ["mlp", "cnn"]
+DATASETS = ["mnist", "cifar10"]
+
+
+def check_supported(model: str, dataset: str) -> None:
+    if (model, dataset) != ("mlp", "mnist"):
+        raise NotImplementedError(
+            f"model={model!r}, dataset={dataset!r} is not implemented yet: only the sigmoid MLP on MNIST "
+            "exists (SigmoidCNN and the CIFAR-10 loader are still to be written)."
+        )
 
 
 class SigmoidMLP(nn.Module):
@@ -187,8 +200,13 @@ def train_run(
     lr: float | None = None,
     controller_path: str | Path = "results/ghd_controller.pt",
     keep_logs: bool = True,
+    model_name: str = "mlp",
+    dataset: str = "mnist",
+    num_layers: int = NUM_LAYERS,
+    init_gain: float = INIT_GAIN,
 ) -> dict:
     """Train one (optimizer, ghd_mode, seed) configuration and return its result dict."""
+    check_supported(model_name, dataset)
     n_steps = N_STEPS_BY_OPT[opt] if n_steps is None else n_steps
     torch.set_num_threads(1)
     random.seed(seed)
@@ -199,7 +217,7 @@ def train_run(
     lr = OPTIMIZER_LR[opt] if lr is None else lr
     warmup_steps = LR_WARMUP_STEPS if opt in LR_WARMUP_OPTS else 0
 
-    model = SigmoidMLP().to(device)
+    model = SigmoidMLP(num_layers=num_layers, init_gain=init_gain).to(device)
     optimizer = make_optimizer(opt, model.parameters(), lr=lr)
     # Baselines get a passive (observe-only) hook so their gradient health is logged too.
     hook = GHDHook(model, mode="passive" if ghd == "none" else ghd, controller_path=controller_path,
@@ -254,8 +272,11 @@ def train_run(
 
     return {
         "config": {
-            "model": f"SigmoidMLP(784-256x9-10, sigmoid, xavier_uniform gain={INIT_GAIN})",
-            "init_gain": INIT_GAIN,
+            "model": f"SigmoidMLP(784-256x{num_layers - 1}-10, sigmoid, xavier_uniform gain={init_gain:g})",
+            "model_name": model_name,
+            "dataset_name": dataset,
+            "num_layers": num_layers,
+            "init_gain": init_gain,
             "dataset": "MNIST (50k train / 10k val / 10k test)",
             "optimizer": opt,
             "ghd_mode": ghd,
@@ -293,8 +314,8 @@ def train_run(
 RUNNING_DIR = ".running"
 
 
-def running_marker(results_dir: str | Path, opt: str, ghd: str, seed: int) -> Path:
-    return Path(results_dir) / RUNNING_DIR / result_path(results_dir, opt, ghd, seed).name
+def running_marker(results_dir: str | Path, opt: str, ghd: str, seed: int, prefix: str = EXP1_PREFIX) -> Path:
+    return Path(results_dir) / RUNNING_DIR / result_path(results_dir, opt, ghd, seed, prefix).name
 
 
 def run_one(
@@ -308,21 +329,27 @@ def run_one(
     lr: float | None = None,
     force: bool = False,
     verbose: bool = True,
+    prefix: str = EXP1_PREFIX,
+    model_name: str = "mlp",
+    dataset: str = "mnist",
+    num_layers: int = NUM_LAYERS,
+    init_gain: float = INIT_GAIN,
 ) -> dict:
     """Train one run and save its result JSON. Resumable: an existing JSON is loaded instead."""
-    path = result_path(results_dir, opt, ghd, seed)
+    path = result_path(results_dir, opt, ghd, seed, prefix)
     if path.exists() and not force:
         if verbose:
             print(f"[skip] {path.name} exists")
         with open(path) as f:
             return json.load(f)
 
-    marker = running_marker(results_dir, opt, ghd, seed)
+    marker = running_marker(results_dir, opt, ghd, seed, prefix)
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.touch()
     try:
         lr = OPTIMIZER_LR[opt] if lr is None else lr
-        result = train_run(opt, ghd, seed, n_steps, eval_every, lr=lr, controller_path=controller_path)
+        result = train_run(opt, ghd, seed, n_steps, eval_every, lr=lr, controller_path=controller_path,
+                           model_name=model_name, dataset=dataset, num_layers=num_layers, init_gain=init_gain)
         path.parent.mkdir(parents=True, exist_ok=True)
         _write_json_atomic(path, result)
     finally:

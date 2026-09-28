@@ -11,11 +11,13 @@ import torch.nn as nn
 
 from ghd.controller import ControllerTrainer, GHDController, load_controller
 from ghd.core import (
-    LayerSignals, LayerState, confidence_noise, confidence_oscil, confidence_vanish, sigmoid_clipped,
+    LayerSignals, LayerState, confidence_noise, confidence_oscil, confidence_vanish, confidence_vanish_from_s2_s3,
+    rule_strength, sigmoid_clipped,
 )
 from ghd.experiment import SigmoidMLP, curve_auc, run_one, steps_to_threshold
 from ghd.hook import GHDHook
 from ghd.optimizers import LARS, LNGD, _trust_ratio
+from ghd.paths import result_files, run_prefix
 
 
 def _sig(**kw) -> LayerSignals:
@@ -59,6 +61,14 @@ class TestCore(unittest.TestCase):
         st.p_noisy = 10
         self.assertEqual(st.detect(_sig(s5=0.9), step=200)[0], "healthy")
         self.assertEqual(st.detect(_sig(s5=0.9), step=200, enable_noisy=True)[0], "noisy")
+
+    def test_non_structural_vanishing_has_nonzero_strength(self) -> None:
+        sig = _sig(s2=0.05, s3=0.1, s_depth=0.5)  # S_depth >= 0.01: confidence_vanish would be 0
+        self.assertEqual(confidence_vanish(sig.s_depth), 0.0)
+        self.assertAlmostEqual(confidence_vanish_from_s2_s3(0.10, 0.20), 0.5)
+        for rule in ("vanishing_strict", "vanishing_early", "vanishing_s3"):
+            self.assertGreater(rule_strength("vanishing", sig, rule), 0.5, rule)
+        self.assertEqual(rule_strength("vanishing", sig, "structural_vanishing"), 0.0)
 
     def test_s4_masked_without_previous_gradient(self) -> None:
         self.assertEqual(LayerState().compute_signals(1.0, 1.0, 1.0, None).s4, 0.5)
@@ -133,6 +143,25 @@ class TestHook(unittest.TestCase):
         self.assertTrue(amplified)
         self.assertGreater(hook.total_interventions, 0)
 
+    def test_conv_layers_are_monitored(self) -> None:
+        torch.manual_seed(0)
+        model = nn.Sequential(
+            nn.Conv2d(1, 4, 3, padding=1), nn.Sigmoid(), nn.Conv2d(4, 4, 3, padding=1), nn.Sigmoid(),
+            nn.Flatten(), nn.Linear(4 * 28 * 28, 10),
+        )
+        opt = torch.optim.SGD(model.parameters(), lr=0.1)
+        hook = GHDHook(model, mode="rules", warmup=2, log_every=1, optimizer=opt)
+        self.assertEqual([type(m) for m in hook.layers], [nn.Conv2d, nn.Conv2d, nn.Linear])
+        for _ in range(5):
+            x, y = self._batch()
+            opt.zero_grad()
+            nn.functional.cross_entropy(model(x), y).backward()
+            hook.pre_step(2.3)
+            opt.step()
+            hook.post_step()
+        self.assertEqual(list(hook.logs[-1]["layers"]), ["L1", "L2", "L3"])
+        self.assertGreater(hook.logs[-1]["layers"]["L1"]["s1"], 0.0)
+
     def test_ai_mode_falls_back_without_checkpoint(self) -> None:
         with self.assertWarns(UserWarning):
             hook = GHDHook(SigmoidMLP(num_layers=3, hidden_dim=8), mode="ai", controller_path="/nonexistent.pt")
@@ -162,6 +191,22 @@ class TestExperiment(unittest.TestCase):
             self.assertIsInstance(load_controller(ckpt), GHDController)
             ai = run_one("sgd", "ai", 42, n_steps=150, results_dir=tmp, controller_path=ckpt, verbose=False)
             self.assertEqual(ai["ghd_summary"]["controller"], "mlp")
+
+    def test_exp2_spec_naming_and_eval_every(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = run_prefix("mlp", "mnist", 7, 2.5)
+            self.assertEqual(prefix, "mlp_mnist_l7_g2.5")
+            r = run_one("sgd", "none", 42, n_steps=30, eval_every=10, results_dir=tmp, verbose=False,
+                        prefix=prefix, num_layers=7, init_gain=2.5)
+            self.assertTrue(Path(tmp, "mlp_mnist_l7_g2.5_sgd_none_seed42.json").exists())
+            self.assertEqual(r["val_steps"], [10, 20, 30])
+            self.assertEqual((r["config"]["num_layers"], r["config"]["init_gain"]), (7, 2.5))
+            Path(tmp, "mlp_mnist_sgd_none_seed42.json").write_text("{}")  # an Exp 1 name in the same folder
+            self.assertEqual([p.name for p in result_files(tmp, prefix)], ["mlp_mnist_l7_g2.5_sgd_none_seed42.json"])
+            self.assertEqual([p.name for p in result_files(tmp, "mlp_mnist")], ["mlp_mnist_sgd_none_seed42.json"])
+            with self.assertRaises(NotImplementedError):
+                run_one("sgd", "none", 42, n_steps=10, results_dir=tmp, verbose=False, model_name="cnn",
+                        dataset="cifar10", prefix="cnn_cifar10_l4_g2.5")
 
 
 if __name__ == "__main__":

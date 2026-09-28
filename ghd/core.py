@@ -44,6 +44,12 @@ def confidence_vanish(s_depth: float) -> float:
     return float(np.clip(1.0 - s_depth / SDEPTH_STRUCTURAL, 0.0, 1.0))
 
 
+def confidence_vanish_from_s2_s3(s2: float, s3: float) -> float:
+    """Strength for the non-structural vanishing rules (strict / early / S3-only), where
+    S_depth >= 0.01 and ``confidence_vanish`` would be 0. 0.5 at S2=0.10, S3=0.20."""
+    return sigmoid_clipped(3 * (VANISH_S3_STRICT - s3) + 3 * (VANISH_S2_STRICT - s2))
+
+
 def confidence_oscil(s4: float, s6: float) -> float:
     return sigmoid_clipped(3 * (0.60 - s4) + 3 * abs(min(s6, 0.0)))
 
@@ -139,9 +145,11 @@ class LayerState:
         return "healthy", "healthy"
 
 
-def rule_strength(mode: str, sig: LayerSignals) -> float:
+def rule_strength(mode: str, sig: LayerSignals, rule: str = "") -> float:
     if mode == "vanishing":
-        return confidence_vanish(sig.s_depth)
+        if rule == "structural_vanishing":
+            return confidence_vanish(sig.s_depth)
+        return confidence_vanish_from_s2_s3(sig.s2, sig.s3)
     if mode == "oscillating":
         return confidence_oscil(sig.s4, sig.s6)
     if mode == "noisy":

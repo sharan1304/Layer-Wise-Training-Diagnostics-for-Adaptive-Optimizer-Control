@@ -57,7 +57,9 @@ class GHDHook:
     ) -> None:
         if mode not in ("passive", "rules", "ai"):
             raise ValueError(f"Unknown GHD mode: {mode}")
-        self.layers = [m for m in model.modules() if isinstance(m, nn.Linear)]
+        # Monitored layers in registration order (assumed to match forward order); a conv weight
+        # is treated as one flat gradient tensor, like a linear weight.
+        self.layers = [m for m in model.modules() if isinstance(m, (nn.Linear, nn.Conv2d))]
         self.layer_params = [[p for p in m.parameters()] for m in self.layers]
         self.optimizer = optimizer
         self._group_of = {id(p): g for g in optimizer.param_groups for p in g["params"]} if optimizer else {}
@@ -161,7 +163,7 @@ class GHDHook:
             for i in range(n):
                 self.states[i].update_counters(signals[i])
                 modes[i], rules[i] = self.states[i].detect(signals[i], t, self.enable_noisy)
-                strengths[i] = rule_strength(modes[i], signals[i])
+                strengths[i] = rule_strength(modes[i], signals[i], rules[i])
             if self.mode == "ai" and self.controller is not None:
                 modes, strengths = self._ai_decisions(signals, t)
 

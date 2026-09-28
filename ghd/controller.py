@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .core import MODES
+from .paths import result_files
 
 
 FEATURE_DIM = 13
@@ -83,10 +84,10 @@ def checkpoint_sources(path: str | Path) -> list[str] | None:
         return None
 
 
-def rules_log_files(log_dir: str | Path) -> list[Path]:
-    """Result files from ghd_mode='rules' runs only."""
+def rules_log_files(log_dir: str | Path, prefix: str | None = None) -> list[Path]:
+    """Result files from ghd_mode='rules' runs only (of one experiment spec if `prefix` is given)."""
     files = []
-    for path in sorted(Path(log_dir).glob("mlp_mnist_*_rules_seed*.json")):
+    for path in result_files(log_dir, prefix, ghd="rules"):
         try:
             with open(path) as f:
                 if json.load(f)["config"]["ghd_mode"] == "rules":
@@ -110,10 +111,10 @@ class ControllerTrainer:
         self.best_val_loss = float("inf")
         self.history: list[dict[str, float]] = []
 
-    def load_logs(self, log_dir: str | Path) -> int:
+    def load_logs(self, log_dir: str | Path, prefix: str | None = None) -> int:
         """Extract (13-d signals, mode label, strength label) per logged layer-step."""
         X, y_mode, y_strength = [], [], []
-        files = rules_log_files(log_dir)
+        files = rules_log_files(log_dir, prefix)
         for path in files:
             with open(path) as f:
                 logs = json.load(f)["ghd_logs"]
