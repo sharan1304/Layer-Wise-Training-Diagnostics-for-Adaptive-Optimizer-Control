@@ -1,8 +1,9 @@
 """'GHD Results' page: the Experiment 1 convergence-speed comparison only.
 
-Rendered by pages/1_📊_GHD_Results.py as two tabs:
-  Exp 1a (gain 1.0) from results/archive_exp1a_gain1/, and
-  Exp 1b (gain 4.0) from results/ (files with init_gain == 4.0).
+Rendered by pages/1_📊_GHD_Results.py as four tabs:
+  Exp 1a (gain 1.0) from results/archive_exp1a_gain1/,
+  Exp 1b (gain 4.0) from results/ (files with init_gain == 4.0), and
+  Exp 2 / 2b (7-layer, gain 1.5 / 1.0) from results/exp2/ (by file prefix).
 Auto-refreshes every 30 s while runs are in progress.
 """
 
@@ -33,6 +34,10 @@ class Experiment:
     results_dir: Path
     init_gain: float
     note: str
+    prefix: str | None = None  # only result files with this prefix (see ghd.paths.result_files)
+    num_layers: int = 10
+    controller_note: str = ""
+    gain_card: tuple[str, str] | None = None  # (label, subtitle) override for the GHD Improvement card
 
     @property
     def controller_path(self) -> Path:
@@ -43,9 +48,20 @@ EXPERIMENTS = [
     Experiment("exp1a", "Exp 1a — Gain 1.0 (severe vanishing)", RESULTS_DIR / "archive_exp1a_gain1", 1.0,
                "Xavier gain 1.0: the forward signal collapses ~10¹⁰× across 10 layers. Detection is the "
                "contribution here; no optimizer trains SGD/LARS past chance. Run with the pre-weight-decay-split "
-               "hook and lrs SGD 0.001 / LARS 0.01 / LNGD 1.0 / AdamW 0.001, 5000 steps."),
+               "hook and lrs SGD 0.001 / LARS 0.01 / LNGD 1.0 / AdamW 0.001, 5000 steps.",
+               gain_card=("GHD vs Baseline",
+                          "Detection only — no convergence improvement at gain 1.0 (gap too large to correct)")),
     Experiment("exp1b", "Exp 1b — Gain 4.0 (moderate vanishing)", RESULTS_DIR, 4.0,
-               "Xavier gain 4.0: all optimizers can train; both detection and correction are evaluated."),
+               "Xavier gain 4.0: all optimizers can train; both detection and correction are evaluated.",
+               controller_note="Note: 100% reflects ~100% healthy training examples at gain 4.0. "
+                               "Primary evidence is convergence speed match."),
+    Experiment("exp2", "Exp 2 — Main Result (gain 1.5)", RESULTS_DIR / "exp2", 1.5,
+               "Main result: SGD+GHD reaches 80% in 300 steps vs 473 (37% faster). Vanishing correction alone "
+               "(197 interventions) produces the full speed-up.",
+               prefix="mlp_mnist_l7_g1.5", num_layers=7),
+    Experiment("exp2b", "Exp 2b — Rescue Case (gain 1.0)", RESULTS_DIR / "exp2", 1.0,
+               "SGD: 9.99% final accuracy (never trains). SGD+GHD-Rules: 95.56% final accuracy (rescued).",
+               prefix="mlp_mnist_l7_g1", num_layers=7),
 ]
 MARKER_MAX_AGE = 3 * 3600  # ignore stale markers from killed runs
 REFRESH_SECONDS = 30
@@ -102,14 +118,14 @@ def _fingerprint(exp: Experiment) -> tuple:
 
 
 @st.cache_data(show_spinner="Loading GHD results...")
-def _load(results_dir: str, init_gain: float, _fp: tuple) -> list[dict]:
+def _load(results_dir: str, init_gain: float, prefix: str | None, _fp: tuple) -> list[dict]:
     """Results in `results_dir` whose model used `init_gain` (files without the field are gain 1.0)."""
-    return [r for r in load_results(results_dir, with_logs=True)
+    return [r for r in load_results(results_dir, with_logs=True, prefix=prefix)
             if float(r["config"].get("init_gain", 1.0)) == init_gain]
 
 
 def _load_exp(exp: Experiment) -> list[dict]:
-    return _load(str(exp.results_dir), exp.init_gain, _fingerprint(exp))
+    return _load(str(exp.results_dir), exp.init_gain, exp.prefix, _fingerprint(exp))
 
 
 @st.cache_data
@@ -431,6 +447,8 @@ def section_ai_controller(results: list[dict], cfg: tuple[str, str], exp: Experi
             return
         st.markdown(_card("Controller Accuracy", f"{info['val_acc'] * 100:.1f}%",
                           "vs rule-based labels on validation set"), unsafe_allow_html=True)
+        if exp.controller_note:
+            st.caption(exp.controller_note)
         counts = info["class_counts"]
         if counts:
             st.markdown('<div class="ghd-chart-title" style="margin-top:14px">Training Data Distribution</div>',
@@ -446,7 +464,7 @@ def section_ai_controller(results: list[dict], cfg: tuple[str, str], exp: Experi
 
 
 # ---------------------------------------------------------------- section 5
-def section_summary(results: list[dict], df: pd.DataFrame, cfg: tuple[str, str]) -> None:
+def section_summary(results: list[dict], df: pd.DataFrame, cfg: tuple[str, str], exp: Experiment) -> None:
     st.subheader("Summary")
     by_cfg = {(r["optimizer"], r["ghd_mode"]): r for _, r in df.iterrows()}
 
@@ -467,13 +485,18 @@ def section_summary(results: list[dict], df: pd.DataFrame, cfg: tuple[str, str])
     sdepth = [s["mean_sdepth_early"] for s in sums if s.get("mean_sdepth_early") is not None]
     fa = [s["false_alarm_rate"] for s in sums if s.get("false_alarm_rate") is not None]
 
+    gain_name = "GHD Improvement"
+    gain_note = f"Δ steps→80% · {gain_label}" if gain_label else "needs a GHD config and its baseline at 80%"
+    if exp.gain_card:
+        gain_name, gain_note = exp.gain_card
+
     cols = st.columns(4)
     cards = [
         _card("Best Convergence", f"{best_steps:.0f} steps" if best_steps is not None else "—",
               f"to 80% · {best_label}" if best_label else "no config reached 80% on every seed"),
-        _card("GHD Improvement",
+        _card(gain_name,
               "—" if best_gain is None else f"{-best_gain:+.0f} steps".replace("-", "−"),
-              f"Δ steps→80% · {gain_label}" if gain_label else "needs a GHD config and its baseline at 80%",
+              gain_note,
               None if best_gain is None else GOOD if best_gain > 0 else BAD),
         _card("Detection Rate", _sci(float(np.mean(sdepth))) if sdepth else "—",
               f"Avg S_depth layers 1-5 · {_label(cfg)}"),
@@ -503,7 +526,7 @@ def _steps_note(results: list[dict]) -> str:
 def render_experiment(exp: Experiment, in_progress: bool) -> None:
     results = _load_exp(exp)
     k = exp.key
-    st.markdown(f'<div class="ghd-sub">10-layer Sigmoid MLP on MNIST · Xavier gain {exp.init_gain:g} · '
+    st.markdown(f'<div class="ghd-sub">{exp.num_layers}-layer Sigmoid MLP on MNIST · Xavier gain {exp.init_gain:g} · '
                 f'{_steps_note(results)} · 3 seeds</div>', unsafe_allow_html=True)
     st.caption(exp.note)
     if in_progress and exp.results_dir == RESULTS_DIR:
@@ -531,7 +554,7 @@ def render_experiment(exp: Experiment, in_progress: bool) -> None:
         with st.container(border=True):
             section_ai_controller(results, cfg, exp, k)
     with st.container(border=True):
-        section_summary(results, df, cfg)
+        section_summary(results, df, cfg, exp)
 
 
 def _body(auto_refresh: bool) -> None:
