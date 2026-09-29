@@ -38,6 +38,15 @@ class Experiment:
     num_layers: int = 10
     controller_note: str = ""
     gain_card: tuple[str, str] | None = None  # (label, subtitle) override for the GHD Improvement card
+    table_extra: tuple[tuple[str, str], ...] = ()  # ablation configs shown in the tables only, not the charts
+
+    @property
+    def table_configs(self) -> list[tuple[str, str]]:
+        """CONFIGS with `table_extra` inserted after the same optimizer's GHD-Rules row."""
+        out = list(CONFIGS)
+        for cfg in self.table_extra:
+            out.insert(out.index((cfg[0], "rules")) + 1, cfg)
+        return out
 
     @property
     def controller_path(self) -> Path:
@@ -56,9 +65,10 @@ EXPERIMENTS = [
                controller_note="Note: 100% reflects ~100% healthy training examples at gain 4.0. "
                                "Primary evidence is convergence speed match."),
     Experiment("exp2", "Exp 2 — Main Result (gain 1.5)", RESULTS_DIR / "exp2", 1.5,
-               "Main result: SGD+GHD reaches 80% in 300 steps vs 473 (37% faster). Vanishing correction alone "
-               "(197 interventions) produces the full speed-up.",
-               prefix="mlp_mnist_l7_g1.5", num_layers=7),
+               "Main result: SGD+GHD-AI reaches 80% in 300 steps vs 473 (37% faster).  \n"
+               "SGD+GHD-Rules reaches 80% in 313 steps (34% faster).  \n"
+               "Vanishing correction alone (197 interventions) produces the full speed-up.",
+               prefix="mlp_mnist_l7_g1.5", num_layers=7, table_extra=(("sgd", "rules_vanish_only"),)),
     Experiment("exp2b", "Exp 2b — Rescue Case (gain 1.0)", RESULTS_DIR / "exp2", 1.0,
                "SGD: 9.99% final accuracy (never trains). SGD+GHD-Rules: 95.56% final accuracy (rescued).",
                prefix="mlp_mnist_l7_g1", num_layers=7),
@@ -71,6 +81,7 @@ COLORS = {
     ("adamw", "none"): "#0F766E", ("adamw", "rules"): "#5EEAD4", ("adamw", "ai"): "#0D9488",
     ("lars", "none"): "#92400E", ("lars", "ai"): "#F59E0B",
     ("lngd", "none"): "#6B21A8", ("lngd", "ai"): "#A855F7",
+    ("sgd", "rules_vanish_only"): "#CBD5E1",
 }
 MODE_COLORS = {
     "healthy": "#14B8A6", "vanishing": "#EF4444", "exploding": "#F97316", "oscillating": "#EAB308",
@@ -154,7 +165,7 @@ def _runs(results: list[dict], cfg: tuple[str, str]) -> list[dict]:
 
 
 def _label(cfg: tuple[str, str]) -> str:
-    return config_label(*cfg).replace(" + ", "+")
+    return config_label(*cfg).replace(" + ", "+").replace("GHD-Vanish-Only", "Vanish-Only")
 
 
 def _rgba(hex_color: str, alpha: float) -> str:
@@ -346,7 +357,7 @@ def table_threshold(results: list[dict], configs: list[tuple[str, str]], deltas:
     st.caption(caption)
 
 
-def section_comparisons(results: list[dict], k: str) -> None:
+def section_comparisons(results: list[dict], k: str, table_configs: list[tuple[str, str]]) -> None:
     st.subheader("Convergence Race & Steps to Threshold")
     alone, versus, everything = st.tabs(["Optimizers alone", "Optimizer vs Optimizer + GHD", "All configurations"])
     with alone:
@@ -356,10 +367,10 @@ def section_comparisons(results: list[dict], k: str) -> None:
     with versus:
         st.caption("Each optimizer against the same optimizer with GHD-Rules / GHD-AI.")
         chart_facets(results, key=f"{k}_race_versus")
-        table_threshold(results, CONFIGS, deltas=True)
+        table_threshold(results, table_configs, deltas=True)
     with everything:
         chart_race(results, CONFIGS, key=f"{k}_race_all")
-        table_threshold(results, CONFIGS, deltas=True)
+        table_threshold(results, table_configs, deltas=True)
 
 
 # ---------------------------------------------------------------- section 3
@@ -540,7 +551,7 @@ def render_experiment(exp: Experiment, in_progress: bool) -> None:
         return
 
     with st.container(border=True):
-        section_comparisons(results, k)
+        section_comparisons(results, k, exp.table_configs)
     df = aggregate(results)
 
     available = [c for c in CONFIGS if _runs(results, c)]
